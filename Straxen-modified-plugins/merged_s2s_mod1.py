@@ -1,3 +1,4 @@
+#MODIFIED MERGED_S2s PLUGIN
 from typing import Tuple, Dict, Union
 import numpy as np
 from tqdm import tqdm
@@ -48,6 +49,7 @@ class MergedS2s(strax.OverlapWindowPlugin):
         help="Do not merge peaklets at all if the result would be a peak longer than this [ns]",
     )
 
+    #MODIFIED S2_merge_gap_thresholds - to disable merging of peaklets
     s2_merge_gap_thresholds = straxen.URLConfig(
         default=(
             (1.84, -1),
@@ -60,7 +62,8 @@ class MergedS2s(strax.OverlapWindowPlugin):
             (4.18, -1),
             (4.51, -1),
         ),
-        
+
+    #ORIGINAL S2_merge_gap_thresholds
     # s2_merge_gap_thresholds = straxen.URLConfig(
     #     default=(
     #         (1.84, 2.84e04),
