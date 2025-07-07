@@ -1,4 +1,4 @@
-#MODIFIED
+#MODIFIED PEAKLET PLUGIN
 from typing import Dict, Tuple, Union
 import numba
 import numpy as np
@@ -13,6 +13,8 @@ from scipy.optimize import curve_fit
 import copy
 
 export, __all__ = strax.exporter()
+
+#Adding new configuration setting so clipping logic can be toggled when setting context
 
 @strax.takes_config(
     strax.Option('use_clipped_area_per_channel', default=False),
@@ -349,8 +351,10 @@ class Peaklets(strax.Plugin):
             store_data_top=self.store_data_top,
             store_data_start=self.store_data_start,
         )
-        
+
+        #Logic only called if toggled to true in context and applied just after full peaklets data structure formed
         if self.use_clipped_area_per_channel:
+            
             peaklets = self.clipped_peaklet_gaussian(peaklets)
             #hitlets = self.clip_hitlets_to_peaklets(hitlets, peaklets)
             #self.plot_peak_actual(peaklets[0])
@@ -361,7 +365,8 @@ class Peaklets(strax.Plugin):
             
             #Rescaling length based on the new dt
             peaklets['length'] = peaklets['length'] * dt_copy // peaklets['dt']
-            
+
+            #Sum waveform which determined area_per_channel recalculated for clipped peaklets
             strax.sum_waveform(
                 peaklets,
                 hitlets,
@@ -372,8 +377,6 @@ class Peaklets(strax.Plugin):
                 store_data_top=self.store_data_top,
                 store_data_start=self.store_data_start,
             )
-            
-            #peaklets['dt'] = dt_copy
             
             strax.compute_properties(peaklets, n_top_channels=self.n_top_pmts)
 
@@ -467,28 +470,6 @@ class Peaklets(strax.Plugin):
             log_area, *np.transpose(thresholds[1])
         )
 
-    # def clip_hitlets_to_peaklets(self, hitlets, peaklets):
-    #     clipped_hitlets = hitlets.copy()
-    #     hit_to_peak = strax.fully_contained_in(hitlets, peaklets)
-        
-    #     for i, peak_idx in enumerate(hit_to_peak):
-    #         if peak_idx == -1:
-    #             continue
-            
-    #         peak = peaklets[peak_idx]
-    #         # Clip start time
-    #         if clipped_hitlets[i]['time'] < peak['time']:
-    #             delta = peak['time'] - clipped_hitlets[i]['time']
-    #             clipped_hitlets[i]['time'] = peak['time']
-    #             clipped_hitlets[i]['length'] = max(clipped_hitlets[i]['length'] - delta, 0)
-    #         # Clip end time
-    #         hitlet_end = clipped_hitlets[i]['time'] + clipped_hitlets[i]['length'] * clipped_hitlets[i]['dt']
-    #         peak_end = peak['time'] + peak['length'] * peak['dt']
-    #         if hitlet_end > peak_end:
-    #             new_length = int((peak_end - clipped_hitlets[i]['time']) // clipped_hitlets[i]['dt'])
-    #             clipped_hitlets[i]['length'] = max(new_length, 0)
-    #     return clipped_hitlets
-
 
     @staticmethod
     def clip_peaklet_times_2(p, start, end):
@@ -497,7 +478,6 @@ class Peaklets(strax.Plugin):
         if strax.endtime(p) > end:
             p["length"] = (end - p["time"]) // p["dt"]
         return p    
-    
     
     def plot_peak_actual(self, p, **kwargs):
         n = np.int64(p["length"])
@@ -512,7 +492,7 @@ class Peaklets(strax.Plugin):
         plt.xlabel("Time (ns)")
         plt.ylabel("Sum waveform (PE / ns)")
 
-
+    #Gaussian fit and clipped to sigma value provided in context
     def clipped_peaklet_gaussian(self, peaklets, current_sigma=None):
         if current_sigma is None:
             current_sigma = self.config['clip_sigma']
@@ -540,55 +520,29 @@ class Peaklets(strax.Plugin):
             # Initial guess for fit
 
             #Guess for sigma
-            # Calculate a more robust guess for sigma (fall back to width if needed)
-            
             sigma_guess = max(p_copy['width'][7]*0.5, 1.0)
-
-            #sigma_guess = (bin_centers[-1] - bin_centers[0])/6
             
             #Guess for amplitude
             area = p['area']
-            #a_guess = area / (np.sqrt(2 * np.pi) * sigma_guess) #Dependent on sigma being correct
-            
             a_guess2 = np.max(waveform)
             
             #Guess for mu 
-            #mu_guess = np.sum(bin_centers * waveform) / np.sum(waveform)
-            #mu_guess =np.max(bin_centers)/2 
-            
             mu_guess = np.sum(bin_centers * waveform) / np.sum(waveform)
-            #variance = np.sum(waveform * (bin_centers - mu_guess) ** 2) / np.sum(waveform)
-            #sigma_guess = np.sqrt(variance)
+
             
             p0 = [a_guess2, mu_guess, sigma_guess]
 
             try:
                 params, _ = curve_fit(gaussian, bin_centers, waveform, p0=p0, maxfev=2000)
                 a, mu, sigma = params
-                #print(f"Peaklet {i} fit successful: a={a:.2f}, mu={mu:.2f}, sigma={sigma:.2f}")
-                
-                #Quality Checks for the Fit
-                
-                # 1. sigma must be reasonable
-                #For normal gaussian 99.7% of area is within 3 sigma so total width roughly 6 sigma
-                
-                # total_width = bin_centers[-1] - bin_centers[0]
-                # if not (0.8 < sigma / (total_width / 6) < 1.5):
-                #     print(f"Peaklet {i}: Fitted sigma ({sigma:.2f}) looks wrong (partial fit?), skipping.")
-                #     clipped_peaklets.append(p_copy)
-                #     continue
 
-                # 2. mu should be within the waveform region
+                
+                # Checking mu is within the waveform region to ensure reasonable fit
                 if not (bin_centers[0] < mu < bin_centers[-1]):
                     #print(f"Peaklet {i}: Fitted mu ({mu:.2f}) out of range, skipping.")
                     clipped_peaklets.append(p_copy)
                     continue
-                
-                # # 3. The fit should not be to just the start/end (e.g. close to edges)
-                # if abs(mu - mu_guess) > 0.5 * total_width:
-                #     print(f"Peaklet {i}: mu far from pulse center, skipping.")
-                #     clipped_peaklets.append(p_copy)
-                #     continue
+
                 
                 end_time = mu + current_sigma * sigma
                 
@@ -599,16 +553,14 @@ class Peaklets(strax.Plugin):
                     clipped_peaklets.append(p_copy)
                     continue
 
+                #Peaklet length clipped according to clip_sigma and fit
                 p_clip = self.clip_peaklet_times_2(p_copy, start_time, end_time)
-                
 
                 if p_clip is None or p_clip['length'] <= 0:
                     #print(f"Peaklet {i} has non-positive length after clipping, skipping.")
                     clipped_peaklets.append(p_copy)
                     continue
                 
-                
-                #print(f"Peaklet {i} clipped successfully: new length = {p['length']}")
                 p_clip['was_clipped'] = 1
                 clipped_peaklets.append(p_clip)
                 end_times_true.append(strax.endtime(p_copy)
@@ -619,17 +571,6 @@ class Peaklets(strax.Plugin):
                 #print(f"Peaklet {i} curve_fit failed, skipping clipping.")
                 clipped_peaklets.append(p_copy)
                 continue
-            
-        # print(f"End-times: {end_times}")
-        # print(f"True: {end_times_true}")
-        # plt.axvline(end_times_true[0])
-        # plt.axvline(end_times[0])
-        
-        # self.plot_peak_actual(clipped_peaklets[0])
-        # print(f"Length peaklet 11 (after): {clipped_peaklets[0]['length']}")
-        # print(f"Time peaklet 11 (after): {clipped_peaklets[0]['time']}")
-        # print(f"Length Data peaklet 11 (after): {len(clipped_peaklets[0]['data'])}")
-        # print(f"dt peaklet 11 (after): {clipped_peaklets[0]['dt']}")
             
         return np.array(clipped_peaklets, dtype=self.dtype_for('peaklets'))
 
