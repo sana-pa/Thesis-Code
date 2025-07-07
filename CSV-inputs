@@ -1,1 +1,44 @@
+#BUILDING different S2 sizes
+def generate_base_events(n):
+    df = pd.DataFrame()
 
+    # Position
+    r = np.sqrt(np.random.uniform(0, 40**2, n)) #Within fiducial volume
+    t = np.random.uniform(-np.pi, np.pi, n)
+    df["x"] = r * np.cos(t)
+    df["y"] = r * np.sin(t)
+    df["z"] = np.random.uniform(-150, -1, n)
+
+    # Fixed fields
+    df["excitons"] = 0
+    df["e_field"] = 23
+    df["nestid"] = 7
+    df["ed"] = 0
+    df["t"] = 0
+    df["eventid"] = np.arange(n)
+    df["cluster_id"] = np.arange(n) + 1
+
+    return df
+
+def apply_s2_size(df, s2_range):
+    df_copy = df.copy()
+    df_copy["electrons"] = np.random.uniform(*s2_range, len(df))
+    df_copy["photons"] = df_copy["electrons"] * np.random.uniform(0.125, 0.3, len(df))
+    return df_copy
+
+#Base events generated where everything excpet for d['electrons'] and d['photons'] fields kept constant
+#For 200 events
+
+base = generate_base_events(200)
+
+
+# Apply across S2 electron ranges
+small_s2  = apply_s2_size(base, s2_range=(100, 500))
+medium_s2 = apply_s2_size(base, s2_range=(800, 1500))
+big_s2    = apply_s2_size(base, s2_range=(3000, 6000))
+
+
+# Save to CSVs
+small_s2.to_csv("/Users/sanapatwardhan/Library/Mobile Documents/com~apple~CloudDocs/CSV_inputs/small_200.csv", index=False)
+medium_s2.to_csv("/Users/sanapatwardhan/Library/Mobile Documents/com~apple~CloudDocs/CSV_inputs/medium_200.csv", index=False)
+big_s2.to_csv("/Users/sanapatwardhan/Library/Mobile Documents/com~apple~CloudDocs/CSV_inputs/big_200.csv", index=False)
