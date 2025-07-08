@@ -1,4 +1,4 @@
-# BSc-Thesis-Code
+# Thesis-Code
 
 * Modified 'Peaklet' plugin = peaklets_9.py
 
