@@ -10,3 +10,5 @@
 
 * All main final plots provided in Final-Plots
   
+* GitHub repository for Straxen made by the XENON collaboration can be found [here](https://github.com/XENONnT).
+* GitHub respository for FUSE made by the XENON collaboration can be found [here](https://github.com/XENONnT/fuse).
